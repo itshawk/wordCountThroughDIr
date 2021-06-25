@@ -8,6 +8,8 @@
 #include <mutex>
 #include <queue>
 #include <fstream>
+#include <regex>
+#include <locale>
 
 namespace fs = std::filesystem;
 /*
@@ -33,6 +35,14 @@ bool sortbysec(const std::pair<std::string, int> &a,
     return (a.second > b.second);
 }
 
+// wordcount
+
+struct WordCount
+{
+    std::mutex mut;
+    std::unordered_map<std::string, int> words;
+};
+
 // queue of files to deal with
 struct WorkerQueue
 {
@@ -44,7 +54,7 @@ struct WorkerQueue
 std::mutex workersRunningMut;
 int workersRunning;
 
-void workerThread(WorkerQueue &wQueue, std::unordered_map<std::string, int> &wordCount)
+void workerThread(WorkerQueue &wQueue, WordCount &wordCount)
 {
     std::string word;
     while (1)
@@ -77,12 +87,26 @@ void workerThread(WorkerQueue &wQueue, std::unordered_map<std::string, int> &wor
             wQueue.mut.unlock();
 
             // iterate through file and grab words,
-            // TODO delimit by anything other than alphanumeric, atm its by whitespace, case insensitive
             std::ifstream stream(path.c_str(), std::ios::binary);
             while (stream >> word)
             {
+                transform(word.begin(), word.end(), word.begin(), ::tolower);
                 //fprintf(stderr, "word: %s found %d times.\n", word.c_str(), wordCount[word] + 1);
-                wordCount[word]++;
+                std::regex rgx("\\W+");
+                std::sregex_token_iterator iter(word.begin(), word.end(), rgx, -1);
+                std::sregex_token_iterator end;
+                wordCount.mut.lock();
+                for (; iter != end; ++iter)
+                {
+                    if (iter->str().length() > 0)
+                    {
+
+                        wordCount.words[*iter]++;
+                    }
+                }
+                // wordCount.mut.lock();
+                // wordCount.words[word]++;
+                wordCount.mut.unlock();
             }
         }
     }
@@ -96,7 +120,7 @@ int searcher(fs::path path, std::unordered_map<std::string, bool> exts, WorkerQu
         //checking for extension in valid list
         if (exts[file.path().extension().string()])
         {
-            printf("%ls is a valid file\n", file.path().c_str());
+            //printf("%ls is a valid file\n", file.path().c_str());
             // we don't need to lock here since no other threads will work with this until this finishes
             wQueue.queue.emplace(file.path());
         }
@@ -135,13 +159,14 @@ int main(int argc, char **argv)
 
     // setup thread pool and startup worker threads with maps to put info in
     std::vector<std::thread> threadPool;
-    std::vector<std::unordered_map<std::string, int>> workerThreadCounts(numThreads);
+    //std::vector<std::unordered_map<std::string, int>> workerThreadCounts(numThreads);
+    WordCount workerCounts;
     // counter for use  on 145, waiting for workers to finish
     workersRunning = numThreads;
 
     for (int i = 0; i < numThreads; i++)
     {
-        threadPool.push_back(std::thread(workerThread, std::ref(wQueue), std::ref(workerThreadCounts[i])));
+        threadPool.push_back(std::thread(workerThread, std::ref(wQueue), std::ref(workerCounts)));
     }
     for (std::thread &every_thread : threadPool)
     {
@@ -156,25 +181,25 @@ int main(int argc, char **argv)
 
     // merge maps into one and print it out for now
     // TODO: grab top ten
-    std::unordered_map<std::string, int> retMap;
-    for (std::unordered_map<std::string, int> map : workerThreadCounts)
-    {
-        //retMap.merge(map);
-        for (auto elem : map)
-        {
-            if (retMap[elem.first])
-            {
-                retMap[elem.first] += elem.second;
-            }
-            else
-            {
-                retMap[elem.first] = elem.second;
-            }
-        }
-        //std::cout << "\n\n";
-    }
+    // std::unordered_map<std::string, int> retMap;
+    // for (std::unordered_map<std::string, int> map : workerThreadCounts)
+    // {
+    //     //retMap.merge(map);
+    //     for (auto elem : map)
+    //     {
+    //         if (retMap[elem.first])
+    //         {
+    //             retMap[elem.first] += elem.second;
+    //         }
+    //         else
+    //         {
+    //             retMap[elem.first] = elem.second;
+    //         }
+    //     }
+    //     //std::cout << "\n\n";
+    // }
     std::vector<std::pair<std::string, int>> sortWords;
-    for (auto elem : retMap)
+    for (auto elem : workerCounts.words)
     {
         sortWords.push_back(std::pair<std::string, int>(elem.first, elem.second));
         //std::cout << "new thing in vector\n";
@@ -184,6 +209,6 @@ int main(int argc, char **argv)
     {
         std::cout << sortWords.at(i).first << " : " << sortWords.at(i).second << "\n";
     }
-    printf("10 or size of vector: %lld\n", sortWords.size());
+    //printf("10 or size of vector: %lld\n", sortWords.size());
     return 0;
 }
