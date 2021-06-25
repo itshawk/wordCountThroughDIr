@@ -79,12 +79,10 @@ void workerThread(WorkerQueue &wQueue, std::unordered_map<std::string, int> &wor
             // iterate through file and grab words,
             // TODO delimit by anything other than alphanumeric, atm its by whitespace, case insensitive
             std::ifstream stream(path.c_str(), std::ios::binary);
-
             while (stream >> word)
             {
-                for (auto w : word.spl)
-                    //fprintf(stderr, "word: %s found %d times.\n", word.c_str(), wordCount[word] + 1);
-                    wordCount[word]++;
+                //fprintf(stderr, "word: %s found %d times.\n", word.c_str(), wordCount[word] + 1);
+                wordCount[word]++;
             }
         }
     }
