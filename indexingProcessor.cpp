@@ -227,7 +227,7 @@ int main(int argc, char **argv)
     }
 
     // setup worker threads whatever is smaller max hardware or asked for threads, -1 for hardware because we need a main thread
-    int numThreads = min((int)std::thread::hardware_concurrency() - 1, givenThreads);
+    int numThreads = std::min((int)std::thread::hardware_concurrency() - 1, givenThreads);
 
     // setup and startup worker threads
     WordCount workerCounts;
